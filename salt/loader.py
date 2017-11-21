@@ -1509,7 +1509,7 @@ class LazyLoader(salt.utils.lazy.LazyDict):
                     self.missing_modules[module_name] = virtual_err
                     self.missing_modules[name] = virtual_err
                     return False
-            self.virtual_mapping[name] = _module_name
+            self.virtual_mapping[module_name] = _module_name
         else:
             virtual_aliases = ()
 
