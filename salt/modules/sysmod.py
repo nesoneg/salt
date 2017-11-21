@@ -7,6 +7,7 @@ from __future__ import absolute_import
 # Import python libs
 import fnmatch
 import logging
+import sys
 
 # Import salt libs
 import salt.loader
@@ -888,3 +889,34 @@ def state_schema(module=''):
         schemas.append(_argspec_to_schema(state_mod, state_spec))
 
     return schemas
+
+
+def mapping(*args):
+    '''
+    Return the docstrings for all modules. Optionally, specify a module or a
+    function to narrow the selection.
+
+    The strings are aggregated into a single document on the master for easy
+    reading.
+
+    Multiple modules/functions can be specified.
+
+    CLI Example:
+
+    .. code-block:: bash
+
+        salt '*' sys.doc
+        salt '*' sys.doc sys
+        salt '*' sys.doc sys.doc
+        salt '*' sys.doc network.traceroute user.info
+
+    Modules can be specified as globs.
+
+    .. versionadded:: 2015.5.0
+
+    .. code-block:: bash
+
+        salt '*' sys.doc 'sys.*'
+        salt '*' sys.doc 'sys.list_*'
+    '''
+    return __salt__.virtual_mapping

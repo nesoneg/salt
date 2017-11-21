@@ -1072,7 +1072,6 @@ class LazyLoader(salt.utils.lazy.LazyDict):
         In pack, if any of the values are None they will be replaced with an
         empty context-specific dict
         '''
-
         self.inject_globals = {}
         self.pack = {} if pack is None else pack
         if opts is None:
@@ -1103,6 +1102,7 @@ class LazyLoader(salt.utils.lazy.LazyDict):
         self.loaded_modules = {}  # mapping of module_name -> dict_of_functions
         self.loaded_files = set()  # TODO: just remove them from file_mapping?
         self.static_modules = static_modules if static_modules else []
+        self.virtual_mapping = {}
 
         if virtual_funcs is None:
             virtual_funcs = []
@@ -1493,6 +1493,7 @@ class LazyLoader(salt.utils.lazy.LazyDict):
         if self.virtual_enable:
             virtual_funcs_to_process = [u'__virtual__'] + self.virtual_funcs
             for virtual_func in virtual_funcs_to_process:
+                _module_name = module_name
                 virtual_ret, module_name, virtual_err, virtual_aliases = \
                     self.process_virtual(mod, module_name, virtual_func)
                 if virtual_err is not None:
@@ -1508,6 +1509,7 @@ class LazyLoader(salt.utils.lazy.LazyDict):
                     self.missing_modules[module_name] = virtual_err
                     self.missing_modules[name] = virtual_err
                     return False
+            self.virtual_mapping[name] = _module_name
         else:
             virtual_aliases = ()
 
