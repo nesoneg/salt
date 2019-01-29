@@ -913,6 +913,7 @@ def installed(name,
                         )
                     else:
                         pkg_name = _find_key(prefix, pipsearch)
+                        log.debug('==== prefix %s pipsearch %s pkg_name %s ===', prefix, pipsearch, pkg_name)
                         if pkg_name.lower() in already_installed_packages:
                             continue
                         ver = pipsearch[pkg_name]
