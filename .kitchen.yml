@@ -129,7 +129,7 @@ platforms:
         - systemctl enable sshd.service
         - echo 'L /run/docker.sock - - - - /docker.sock' > /etc/tmpfiles.d/docker.conf
     provisioner:
-      salt_bootstrap_options: -X -p rsync git v<%= version %> >/dev/null
+      salt_bootstrap_options: -X -p rsync stable <%= version %> >/dev/null
 <% if vagrant != false %>
   - name: windows-2012r2
     driver:
