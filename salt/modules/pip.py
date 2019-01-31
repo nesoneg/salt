@@ -1192,6 +1192,8 @@ def version(bin_env=None):
         return __context__[contextkey]
 
     cmd = _get_pip_bin(bin_env)[:]
+    if not isinstance(cmd, list):
+        cmd = [cmd]
     cmd.append('--version')
 
     ret = __salt__['cmd.run_all'](cmd, python_shell=False)
