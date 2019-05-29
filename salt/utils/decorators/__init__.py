@@ -115,7 +115,8 @@ class Depends(object):
     @staticmethod
     def run_command(dependency, mod_name, func_name):
         full_name = '{0}.{1}'.format(mod_name, func_name)
-        log.trace('Running \'%s\' for \'%s\'', dependency, full_name)
+        log.debug('==== in run_command, mod_name %s ====', mod_name)
+        log.debug('Running \'%s\' for \'%s\'', dependency, full_name)
         if IS_WINDOWS:
             args = salt.utils.args.shlex_split(dependency, posix=False)
         else:
@@ -127,8 +128,8 @@ class Depends(object):
                                 stderr=subprocess.STDOUT)
         output = proc.communicate()[0]
         retcode = proc.returncode
-        log.trace('Output from \'%s\': %s', dependency, output)
-        log.trace('Retcode from \'%s\': %d', dependency, retcode)
+        log.debug('Output from \'%s\': %s', dependency, output)
+        log.debug('Retcode from \'%s\': %d', dependency, retcode)
         return retcode
 
     @classmethod
@@ -139,6 +140,7 @@ class Depends(object):
         It will modify the "functions" dict and remove/replace modules that
         are missing dependencies.
         '''
+        log.debug('==== in enforce_dependencies, tgt_mod %s ====', tgt_mod)
         for dependency, dependent_dict in six.iteritems(cls.dependency_dict[kind]):
             for (mod_name, func_name), (frame, params) in six.iteritems(dependent_dict):
                 if mod_name != tgt_mod:
