@@ -42,8 +42,9 @@ def running(opts):
             # proc files may be removed at any time during this process by
             # the minion process that is executing the JID in question, so
             # we must ignore ENOENT during this process
+            log.debug('=== in minion.running exception happened ===')
             pass
-    log.debug('=== in minion.running ret %s  ===', data)
+    log.debug('=== in minion.running ret %s  ===', ret)
     return ret
 
 
