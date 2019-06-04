@@ -25,19 +25,25 @@ def running(opts):
 
     ret = []
     proc_dir = os.path.join(opts['cachedir'], 'proc')
+    log.debug('=== in minion.running proc_dir %s ===', proc_dir)
     if not os.path.isdir(proc_dir):
+        log.debug('=== in minion.running proc_dir is not a dir ===')
         return ret
     for fn_ in os.listdir(proc_dir):
+        log.debug('=== minion.running fn_ %s ===', proc_dir)
         path = os.path.join(proc_dir, fn_)
+        log.debug('=== minion.running path %s  ===', path)
         try:
             data = _read_proc_file(path, opts)
             if data is not None:
+                log.debug('=== minion.running data %s  ===', data)
                 ret.append(data)
         except (IOError, OSError):
             # proc files may be removed at any time during this process by
             # the minion process that is executing the JID in question, so
             # we must ignore ENOENT during this process
             pass
+    log.debug('=== in minion.running ret %s  ===', data)
     return ret
 
 
