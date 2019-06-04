@@ -303,7 +303,7 @@ def installed(name,
               bin_env=None,
               use_wheel=False,
               no_use_wheel=False,
-              log=None,
+              log_file=None,
               proxy=None,
               timeout=None,
               repo=None,
@@ -605,12 +605,14 @@ def installed(name,
 
     .. _`virtualenv`: http://www.virtualenv.org/en/latest/
     '''
+    log.debug('==== in pip.installed ====')
     if pip_bin and not bin_env:
         bin_env = pip_bin
 
     # If pkgs is present, ignore name
     if pkgs:
         if not isinstance(pkgs, list):
+            log.debug('==== in pip.installed pkgs was not a list ====')
             return {'name': name,
                     'result': False,
                     'changes': {},
@@ -646,6 +648,7 @@ def installed(name,
             ret['comment'] = ('The \'use_wheel\' option is only supported in '
                               'pip between {0} and {1}. The version of pip detected '
                               'was {2}.').format(min_version, max_version, cur_version)
+            log.debug('==== in pip.installed pkgs ret %s ====', ret)
             return ret
 
     # Check that the pip binary supports the 'no_use_wheel' option
@@ -659,6 +662,7 @@ def installed(name,
             ret['comment'] = ('The \'no_use_wheel\' option is only supported in '
                               'pip between {0} and {1}. The version of pip detected '
                               'was {2}.').format(min_version, max_version, cur_version)
+            log.debug('==== in pip.installed pkgs ret %s ====', ret)
             return ret
 
     # Check that the pip binary supports the 'no_binary' option
@@ -670,6 +674,7 @@ def installed(name,
             ret['comment'] = ('The \'no_binary\' option is only supported in '
                               'pip {0} and newer. The version of pip detected '
                               'was {1}.').format(min_version, cur_version)
+            log.debug('==== in pip.installed pkgs ret %s ====', ret)
             return ret
 
     # Deprecation warning for the repo option
@@ -701,6 +706,7 @@ def installed(name,
 
         if ret['result'] is False:
             ret['comment'] = '\n'.join(comments)
+            log.debug('==== in pip.installed pkgs ret %s ====', ret)
             return ret
 
     # If a requirements file is specified, only install the contents of the
@@ -724,6 +730,7 @@ def installed(name,
                     'setuptools "develop mode") from {0}.'.format(editable)
                 )
             ret['comment'] = ' '.join(comments)
+            log.debug('==== in pip.installed pkgs ret %s ====', ret)
             return ret
 
     # No requirements case.
@@ -734,6 +741,7 @@ def installed(name,
             pip_list = __salt__['pip.list'](bin_env=bin_env, user=user, cwd=cwd)
         # If we fail, then just send False, and we'll try again in the next function call
         except Exception as exc:
+            log.debug('==== in pip.installed exception %s ====', exc)
             log.exception(exc)
             pip_list = False
 
@@ -752,6 +760,7 @@ def installed(name,
                 if out['result'] is None:
                     ret['result'] = False
                     ret['comment'] = out['comment']
+                    log.debug('==== in pip.installed pkgs ret %s ====', ret)
                     return ret
             else:
                 out = {'result': False, 'comment': None}
@@ -770,6 +779,7 @@ def installed(name,
                     msg = 'Python package {0} is set to be installed'
                     ret['result'] = None
                     ret['comment'] = msg.format(state_pkg_name)
+                    log.debug('==== in pip.installed pkgs ret %s ====', ret)
                     return ret
 
             # The package is already present and will not be reinstalled.
@@ -781,6 +791,7 @@ def installed(name,
             elif result is None:
                 ret['result'] = None
                 ret['comment'] = out['comment']
+	        log.debug('==== in pip.installed pkgs ret %s ====', ret)
                 return ret
 
         # No packages to install.
@@ -789,6 +800,7 @@ def installed(name,
             aicomms = '\n'.join(already_installed_comments)
             last_line = 'All specified packages are already installed' + (' and up-to-date' if upgrade else '')
             ret['comment'] = aicomms + ('\n' if aicomms else '') + last_line
+	    log.debug('==== in pip.installed pkgs ret %s ====', ret)
             return ret
 
     # Construct the string that will get passed to the install call
@@ -802,7 +814,7 @@ def installed(name,
         use_wheel=use_wheel,
         no_use_wheel=no_use_wheel,
         no_binary=no_binary,
-        log=log,
+        log=log_file,
         proxy=proxy,
         timeout=timeout,
         editable=editable,
@@ -840,6 +852,7 @@ def installed(name,
         no_cache_dir=no_cache_dir,
         **kwargs
     )
+    log.debug('==== in pip.installed pip_install_call %s ====', pip_install_call)
 
     if pip_install_call and pip_install_call.get('retcode', 1) == 0:
         ret['result'] = True
@@ -922,6 +935,7 @@ def installed(name,
                         if not pkg_404_comms else '\n'.join(pkg_404_comms)
             ret['comment'] = aicomms + ('\n' if aicomms else '') + succ_comm
 
+            log.debug('==== in pip.installed ret %s ====', ret)
             return ret
 
     elif pip_install_call:
@@ -952,6 +966,7 @@ def installed(name,
         ret['result'] = False
         ret['comment'] = 'Could not install package'
 
+    log.debug('==== in pip.installed ret %s ====', ret)
     return ret
 
 

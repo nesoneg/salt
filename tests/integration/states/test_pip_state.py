@@ -10,6 +10,7 @@
 # Import python libs
 from __future__ import absolute_import, print_function, unicode_literals
 import errno
+import logging
 import os
 import glob
 import shutil
@@ -47,6 +48,8 @@ from salt.exceptions import CommandExecutionError
 
 # Import 3rd-party libs
 from salt.ext import six
+
+log = logging.getLogger(__name__)
 
 
 class VirtualEnv(object):
@@ -484,6 +487,7 @@ class PipStateTest(ModuleCase, SaltReturnAssertsMixin):
         # the state internal keywords
         venv_dir = os.path.join(RUNTIME_VARS.TMP, 'pip-installed-unless')
         venv_create = self.run_function('virtualenv.create', [venv_dir])
+        log.debug('==== in test_22359_pip_installed_unless_does_not_trigger_warnings, venc_create %s ====', venv_create)
         if venv_create['retcode'] > 0:
             self.skipTest(
                 'Failed to create testcase virtual environment: {0}'.format(
@@ -498,6 +502,7 @@ class PipStateTest(ModuleCase, SaltReturnAssertsMixin):
             ret = self.run_state(
                 'pip.installed', name='pep8', bin_env=venv_dir, unless=false_cmd
             )
+            log.debug('==== in test_22359_pip_installed_unless_does_not_trigger_warnings, ret from pip.installed %s ====', ret)
             self.assertSaltTrueReturn(ret)
             self.assertNotIn('warnings', next(six.itervalues(ret)))
         finally:

@@ -642,6 +642,7 @@ class SaltEvent(object):
                     while True:
                         try:
                             ret = self._get_event(wait, tag, match_func, no_block)
+                            log.debug('=== get_event in the while loop ret %s ===', ret)
                             break
                         except tornado.iostream.StreamClosedError:
                             self.close_pub()

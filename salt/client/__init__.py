@@ -734,7 +734,7 @@ class LocalClient(object):
             timeout=None,
             tgt_type='glob',
             ret='',
-            verbose=False,
+            verbose=True,
             kwarg=None,
             progress=False,
             **kwargs):
@@ -748,6 +748,8 @@ class LocalClient(object):
         :param verbose: Print extra information about the running command
         :returns: A generator
         '''
+        import logging
+        log = logging.getLogger(__name__)
         arg = salt.utils.args.condition_input(arg, kwarg)
         was_listening = self.event.cpub
 
@@ -761,6 +763,7 @@ class LocalClient(object):
                 timeout,
                 listen=True,
                 **kwargs)
+	    log.debug('==== here self.pub_data %s =====', self.pub_data)
 
             if not self.pub_data:
                 yield self.pub_data
@@ -775,6 +778,7 @@ class LocalClient(object):
                             verbose,
                             progress,
                             **kwargs):
+                        log.debug('==== here fn_ret %s =====', fn_ret)
 
                         if not fn_ret:
                             continue
@@ -1034,6 +1038,8 @@ class LocalClient(object):
         '''
 
         while True:
+            log.debug('==== self.event %s ====', self.event)
+            log.debug('==== get_event %s ====', self.event.get_event)
             raw = self.event.get_event(wait=0.01, tag=tag, match_type=match_type, full=True,
                                        no_block=True, auto_reconnect=self.auto_reconnect)
             yield raw
@@ -1104,16 +1110,21 @@ class LocalClient(object):
             for raw in ret_iter:
                 # if we got None, then there were no events
                 if raw is None:
+                    log.debug('==== raw is None ====')
                     break
                 if 'minions' in raw.get('data', {}):
                     minions.update(raw['data']['minions'])
                     if 'missing' in raw.get('data', {}):
                         missing.update(raw['data']['missing'])
+                    log.debug('==== minions in raw[data] ====')
+                    log.debug('==== missing %s ====', missing)
                     continue
                 if 'return' not in raw['data']:
+                    log.debug('==== no return continuing ====')
                     continue
                 if kwargs.get('raw', False):
                     found.add(raw['data']['id'])
+                    log.debug('==== raw is False, yielding ====')
                     yield raw
                 else:
                     found.add(raw['data']['id'])
@@ -1169,11 +1180,13 @@ class LocalClient(object):
                 if self.opts['order_masters']:
                     timeout_at += self.opts.get('syndic_wait', 1)
 
+	    log.debug('=== jinfo_iter %s ===', jinfo_iter)
             # check for minions that are running the job still
             for raw in jinfo_iter:
                 # if there are no more events, lets stop waiting for the jinfo
                 if raw is None:
                     break
+                log.debug('=== raw[data] %s ===', raw['data'])
                 try:
                     if raw['data']['retcode'] > 0:
                         log.error('saltutil returning errors on minion %s', raw['data']['id'])
@@ -1193,19 +1206,24 @@ class LocalClient(object):
                         )
                 # Keep track of the jid events to unsubscribe from later
                 open_jids.add(jinfo['jid'])
+                log.debug('==== open_jids %s ====', open_jids)
 
                 # TODO: move to a library??
                 if 'minions' in raw.get('data', {}):
                     minions.update(raw['data']['minions'])
+                    log.debug('==== minions in data, continuing %s ====', raw)
                     continue
                 if 'syndic' in raw.get('data', {}):
                     minions.update(raw['syndic'])
+                    log.debug('==== syndic in data, continuing %s ====', raw)
                     continue
                 if 'return' not in raw.get('data', {}):
+                    log.debug('==== no return in data, continuing %s ====', raw)
                     continue
 
                 # if the job isn't running there anymore... don't count
                 if raw['data']['return'] == {}:
+                    log.debug('==== return in data is empty, continuing %s ====', raw)
                     continue
 
                 # if the minion throws an exception containing the word "return"
@@ -1217,6 +1235,7 @@ class LocalClient(object):
 
                 if 'return' in raw['data']['return'] and \
                     raw['data']['return']['return'] == {}:
+                    log.debug('==== double return in data is empty, continuing %s ====', raw)
                     continue
 
                 # if we didn't originally target the minion, lets add it to the list
@@ -1237,6 +1256,7 @@ class LocalClient(object):
                 # if all minions have timeod out
                 for id_ in minions - found:
                     if now < minion_timeouts[id_]:
+                        log.debug('==== double return in data is empty, continuing %s ====', raw)
                         done = False
                         break
             if done:
@@ -1244,6 +1264,7 @@ class LocalClient(object):
 
             # don't spin
             if block:
+                log.debug('=== stuck here ===')
                 time.sleep(0.01)
             else:
                 yield
@@ -1251,9 +1272,11 @@ class LocalClient(object):
         # If there are any remaining open events, clean them up.
         if open_jids:
             for jid in open_jids:
+		log.debug('==== unsubscribing from jid %s ====', jid)
                 self.event.unsubscribe(jid)
 
         if expect_minions:
+	    log.debug('==== expect_minions %s ====', expect_minions)
             for minion in list((minions - found)):
                 yield {minion: {'failed': True}}
 
@@ -1264,6 +1287,7 @@ class LocalClient(object):
 
         # Report on missing minions
         if missing:
+	    log.debug('==== missing %s ====', missing)
             for minion in missing:
                 yield {minion: {'failed': True}}
 

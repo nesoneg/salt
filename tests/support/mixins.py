@@ -550,6 +550,7 @@ class SaltReturnAssertsMixin(object):
         return ret_data
 
     def assertSaltTrueReturn(self, ret):
+        log.debug('==== in assertSaltTrueReturn ret %s ====', ret)
         try:
             for saltret in self.__getWithinSaltReturn(ret, 'result'):
                 self.assertTrue(saltret)
@@ -569,6 +570,7 @@ class SaltReturnAssertsMixin(object):
                 )
 
     def assertSaltFalseReturn(self, ret):
+        log.debug('==== in assertSaltFalseReturn ret %s ====', ret)
         try:
             for saltret in self.__getWithinSaltReturn(ret, 'result'):
                 self.assertFalse(saltret)
@@ -586,6 +588,7 @@ class SaltReturnAssertsMixin(object):
                 )
 
     def assertSaltNoneReturn(self, ret):
+        log.debug('==== in assertSaltNoneReturn ret %s ====', ret)
         try:
             for saltret in self.__getWithinSaltReturn(ret, 'result'):
                 self.assertIsNone(saltret)

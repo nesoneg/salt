@@ -181,9 +181,13 @@ class SaltCMD(salt.utils.parsers.SaltCMDOptionParser):
                 self._progress_end(out)
                 self._print_returns_summary(ret)
             elif self.config['fun'] == 'sys.doc':
+                import logging
+                log = logging.getLogger(__name__)
+                log.debug('==== here self.local_client %s =====', self.local_client)
                 ret = {}
                 out = ''
                 for full_ret in self.local_client.cmd_cli(**kwargs):
+                    log.debug('==== here full_ret %s =====', full_ret)
                     ret_, out, retcode = self._format_ret(full_ret)
                     ret.update(ret_)
                 self._output_ret(ret, out, retcode=retcode)

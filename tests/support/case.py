@@ -812,6 +812,14 @@ class ModuleCase(TestCase, SaltClientTestCaseMixin):
                                arg,
                                timeout=timeout,
                                kwarg=kwargs)
+        log.debug('==== inside run_function self.client %s ====', self.client)
+        log.debug('==== inside run_function minion_tgt %s function %s arg %s kwargs %s timeout %s orig %s ====',
+                  minion_tgt,
+                  function,
+                  arg,
+                  kwargs,
+                  timeout,
+                  orig)
 
         if minion_tgt not in orig:
             self.skipTest(
@@ -838,6 +846,7 @@ class ModuleCase(TestCase, SaltClientTestCaseMixin):
         Run the state.single command and return the state return structure
         '''
         ret = self.run_function('state.single', [function], **kwargs)
+        log.debug('=== inside run_state, ret %s ===', ret)
         return self._check_state_return(ret)
 
     def _check_state_return(self, ret):
