@@ -734,7 +734,7 @@ class LocalClient(object):
             timeout=None,
             tgt_type='glob',
             ret='',
-            verbose=True,
+            verbose=False,
             kwarg=None,
             progress=False,
             **kwargs):
