@@ -342,7 +342,7 @@ class ZeroMQCaller(BaseCaller):
         try:
             channel.send(load)
         finally:
-            channel.close()
+            channel.stop()
 
 
 def raet_minion_run(cleanup_protecteds):

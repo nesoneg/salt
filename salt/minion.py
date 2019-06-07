@@ -25,10 +25,11 @@ from binascii import crc32
 # Import Salt Libs
 # pylint: disable=import-error,no-name-in-module,redefined-builtin
 from salt.ext import six
+import salt.utils.asynchronous
 from salt._compat import ipaddress
 from salt.utils.network import parse_host_port
 from salt.ext.six.moves import range
-from salt.utils.zeromq import zmq, ZMQDefaultLoop, install_zmq, ZMQ_VERSION_INFO
+from salt.utils.zeromq import zmq, ZMQ_VERSION_INFO
 import salt.transport.client
 import salt.defaults.exitcodes
 
@@ -802,8 +803,7 @@ class SMinion(MinionBase):
         # Clean out the proc directory (default /var/cache/salt/minion/proc)
         if (self.opts.get('file_client', 'remote') == 'remote'
                 or self.opts.get('use_master_when_local', False)):
-            install_zmq()
-            io_loop = ZMQDefaultLoop.current()
+            io_loop = salt.utils.asynchronous.IOLoop()
             io_loop.run_sync(
                 lambda: self.eval_master(self.opts, failed=True)
             )
@@ -939,8 +939,7 @@ class MinionManager(MinionBase):
         self.minions = []
         self.jid_queue = []
 
-        install_zmq()
-        self.io_loop = ZMQDefaultLoop.current()
+        self.io_loop = salt.utils.asynchronous.IOLoop()
         self.process_manager = ProcessManager(name='MultiMinionProcessManager')
         self.io_loop.spawn_callback(self.process_manager.run, **{'asynchronous': True})  # Tornado backward compat
 
@@ -1107,8 +1106,7 @@ class Minion(MinionBase):
         self.periodic_callbacks = {}
 
         if io_loop is None:
-            install_zmq()
-            self.io_loop = ZMQDefaultLoop.current()
+            self.io_loop = salt.utils.asynchronous.IOLoop()
         else:
             self.io_loop = io_loop
 
@@ -2986,8 +2984,7 @@ class SyndicManager(MinionBase):
         self.jid_forward_cache = set()
 
         if io_loop is None:
-            install_zmq()
-            self.io_loop = ZMQDefaultLoop.current()
+            self.io_loop = salt.utils.asynchronous.IOLoop()
         else:
             self.io_loop = io_loop
 

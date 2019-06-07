@@ -78,7 +78,7 @@ class WheelClient(salt.client.mixins.SyncClientMixin,
         try:
             ret = channel.send(load)
         finally:
-            channel.close()
+            channel.stop()
         if isinstance(ret, collections.Mapping):
             if 'error' in ret:
                 salt.utils.error.raise_error(**ret['error'])

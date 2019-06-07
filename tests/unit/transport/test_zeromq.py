@@ -32,6 +32,7 @@ import salt.log.setup
 from salt.ext import six
 import salt.utils.process
 import salt.utils.platform
+import salt.utils.versions
 import salt.transport.server
 import salt.transport.client
 import salt.exceptions
@@ -46,6 +47,8 @@ from tests.support.mixins import AdaptedConfigurationTestCaseMixin
 from tests.support.mock import MagicMock, patch
 from tests.unit.transport.mixins import PubChannelMixin, ReqChannelMixin
 
+import logging
+log = logging.getLogger(__name__)
 ON_SUSE = False
 if 'SuSE' in linux_distribution(full_distribution_name=False):
     ON_SUSE = True
@@ -92,28 +95,28 @@ class BaseZMQReqCase(TestCase, AdaptedConfigurationTestCaseMixin):
         cls.server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.server_channel.pre_fork(cls.process_manager)
 
-        cls.io_loop = zmq.eventloop.ioloop.ZMQIOLoop()
-        cls.io_loop.make_current()
-        cls.server_channel.post_fork(cls._handle_payload, io_loop=cls.io_loop)
-
-        cls.server_thread = threading.Thread(target=cls.io_loop.start)
-        cls.server_thread.daemon = True
+        cls.stop_loop = threading.Event()
+        cls.server_thread = threading.Thread(
+            target=ReqChannelMixin.post_fork_thread,
+            args=(cls.server_channel, cls._handle_payload, cls.stop_loop,),
+        )
         cls.server_thread.start()
 
     @classmethod
     def tearDownClass(cls):
-        if not hasattr(cls, '_handle_payload'):
-            return
+        #if not hasattr(cls, '_handle_payload'):
+        #    return
         # Attempting to kill the children hangs the test suite.
         # Let the test suite handle this instead.
         cls.process_manager.stop_restarting()
         cls.process_manager.kill_children()
-        cls.io_loop.add_callback(cls.io_loop.stop)
+        cls.stop_loop.set()
+        cls.server_thread.join()
         cls.server_thread.join()
         time.sleep(2)  # Give the procs a chance to fully close before we stop the io_loop
         cls.server_channel.close()
         del cls.server_channel
-        del cls.io_loop
+        del cls.stop_loop
         del cls.process_manager
         del cls.server_thread
         del cls.master_config
@@ -160,6 +163,7 @@ class ClearReqTestCases(BaseZMQReqCase, ReqChannelMixin):
 @flaky
 @skipIf(ON_SUSE, 'Skipping until https://github.com/saltstack/salt/issues/32902 gets fixed')
 class AESReqTestCases(BaseZMQReqCase, ReqChannelMixin):
+
     def setUp(self):
         self.channel = salt.transport.client.ReqChannel.factory(self.minion_config)
 
@@ -237,11 +241,11 @@ class BaseZMQPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
         cls.req_server_channel = salt.transport.server.ReqServerChannel.factory(cls.master_config)
         cls.req_server_channel.pre_fork(cls.process_manager)
 
-        cls._server_io_loop = zmq.eventloop.ioloop.ZMQIOLoop()
-        cls.req_server_channel.post_fork(cls._handle_payload, io_loop=cls._server_io_loop)
-
-        cls.server_thread = threading.Thread(target=cls._server_io_loop.start)
-        cls.server_thread.daemon = True
+        cls.stop_loop = threading.Event()
+        cls.server_thread = threading.Thread(
+            target=ReqChannelMixin.post_fork_thread,
+            args=(cls.req_server_channel, cls._handle_payload, cls.stop_loop,),
+        )
         cls.server_thread.start()
 
     @classmethod
@@ -249,13 +253,13 @@ class BaseZMQPubCase(AsyncTestCase, AdaptedConfigurationTestCaseMixin):
         cls.process_manager.kill_children()
         cls.process_manager.stop_restarting()
         time.sleep(2)  # Give the procs a chance to fully close before we stop the io_loop
-        cls.io_loop.add_callback(cls.io_loop.stop)
+        cls.stop_loop.set()
         cls.server_thread.join()
         cls.req_server_channel.close()
         cls.server_channel.close()
         cls._server_io_loop.stop()
         del cls.server_channel
-        del cls._server_io_loop
+        del cls.stop_loop
         del cls.process_manager
         del cls.server_thread
         del cls.master_config
@@ -417,22 +421,11 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         del cls.master_config
 
     def setUp(self):
-        # Start the event loop, even though we dont directly use this with
-        # ZeroMQPubServerChannel, having it running seems to increase the
-        # likely hood of dropped messages.
-        self.io_loop = zmq.eventloop.ioloop.ZMQIOLoop()
-        self.io_loop.make_current()
-        self.io_loop_thread = threading.Thread(target=self.io_loop.start)
-        self.io_loop_thread.start()
         self.process_manager = salt.utils.process.ProcessManager(name='PubServer_ProcessManager')
 
     def tearDown(self):
-        self.io_loop.add_callback(self.io_loop.stop)
-        self.io_loop_thread.join()
         self.process_manager.stop_restarting()
         self.process_manager.kill_children()
-        del self.io_loop
-        del self.io_loop_thread
         del self.process_manager
 
     @staticmethod
@@ -480,17 +473,57 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         results = []
         gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
         gather.start()
+        try:
+            # Allow time for server channel to start, especially on windows
+            time.sleep(2)
+            for i in range(send_num):
+                expect.append(i)
+                load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
+                server_channel.publish(load)
+            server_channel.publish(
+                {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+            )
+        finally:
+            gather.join()
+            server_channel.pub_close()
+        assert len(results) == send_num, (len(results), set(expect).difference(results))
+
+    @skipIf(salt.utils.platform.is_windows(), 'Skip on Windows OS')
+    def test_zeromq_filtering(self):
+        '''
+        Test sending messags to publisher using UDP
+        with zeromq_filtering enabled
+        '''
+        opts = dict(self.master_config, ipc_mode='ipc',
+                    pub_hwm=0, zmq_filtering=True, acceptance_wait_time=5)
+        server_channel = salt.transport.zeromq.ZeroMQPubServerChannel(opts)
+        server_channel.pre_fork(self.process_manager, kwargs={
+            'log_queue': salt.log.setup.get_multiprocessing_logging_queue()
+        })
+        pub_uri = 'tcp://{interface}:{publish_port}'.format(**server_channel.opts)
+        send_num = 1
+        expect = []
+        results = []
+        gather = threading.Thread(target=self._gather_results,
+                                  args=(self.minion_config, pub_uri, results,),
+                                  kwargs={'messages': 2})
+        gather.start()
         # Allow time for server channel to start, especially on windows
-        time.sleep(2)
-        for i in range(send_num):
-            expect.append(i)
-            load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
-            server_channel.publish(load)
-        server_channel.publish(
-            {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
-        )
-        gather.join()
-        server_channel.pub_close()
+        try:
+            time.sleep(2)
+            expect.append(send_num)
+            load = {'tgt_type': 'glob', 'tgt': '*', 'jid': send_num}
+            with patch('salt.utils.minions.CkMinions.check_minions',
+                       MagicMock(return_value={'minions': ['minion'], 'missing': [],
+                                               'ssh_minions': False})):
+                server_channel.publish(load)
+                server_channel.publish(
+                    {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+                )
+        finally:
+            gather.join()
+            server_channel.pub_close()
+            del server_channel
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     def test_publish_to_pubserv_tcp(self):
@@ -506,16 +539,25 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         send_num = 10000
         expect = []
         results = []
-        gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
+        gather = threading.Thread(
+            target=self._gather_results,
+            args=(self.minion_config, pub_uri, results, 30),
+        )
         gather.start()
-        # Allow time for server channel to start, especially on windows
-        time.sleep(2)
-        for i in range(send_num):
-            expect.append(i)
-            load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
-            server_channel.publish(load)
-        gather.join()
-        server_channel.pub_close()
+        try:
+            # Allow time for server channel to start, especially on windows
+            time.sleep(2)
+            for i in range(send_num):
+                expect.append(i)
+                load = {'tgt_type': 'glob', 'tgt': '*', 'jid': i}
+                server_channel.publish(load)
+            server_channel.publish(
+                {'tgt_type': 'glob', 'tgt': '*', 'stop': True}
+            )
+        finally:
+            gather.join()
+            server_channel.pub_close()
+            del server_channel
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     @staticmethod
@@ -551,15 +593,17 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         time.sleep(2)
         gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
         gather.start()
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            executor.submit(self._send_small, opts, 1)
-            executor.submit(self._send_small, opts, 2)
-            executor.submit(self._send_small, opts, 3)
-            executor.submit(self._send_large, opts, 4)
-        expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
-        server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
-        gather.join()
-        server_channel.pub_close()
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                executor.submit(self._send_small, opts, 1)
+                executor.submit(self._send_small, opts, 2)
+                executor.submit(self._send_small, opts, 3)
+                executor.submit(self._send_large, opts, 4)
+            expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
+            server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
+        finally:
+            gather.join()
+            server_channel.pub_close()
         assert len(results) == send_num, (len(results), set(expect).difference(results))
 
     @skipIf(salt.utils.platform.is_windows(), 'Skip on Windows OS')
@@ -582,14 +626,16 @@ class PubServerChannel(TestCase, AdaptedConfigurationTestCaseMixin):
         time.sleep(2)
         gather = threading.Thread(target=self._gather_results, args=(self.minion_config, pub_uri, results,))
         gather.start()
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            executor.submit(self._send_small, opts, 1)
-            executor.submit(self._send_small, opts, 2)
-            executor.submit(self._send_small, opts, 3)
-            executor.submit(self._send_large, opts, 4)
-        expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
-        time.sleep(0.1)
-        server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
-        gather.join()
-        server_channel.pub_close()
+        try:
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                executor.submit(self._send_small, opts, 1)
+                executor.submit(self._send_small, opts, 2)
+                executor.submit(self._send_small, opts, 3)
+                executor.submit(self._send_large, opts, 4)
+            expect = ['{}-{}'.format(a, b) for a in range(10) for b in (1, 2, 3, 4)]
+            time.sleep(0.1)
+            server_channel.publish({'tgt_type': 'glob', 'tgt': '*', 'stop': True})
+        finally:
+            gather.join()
+            server_channel.pub_close()
         assert len(results) == send_num, (len(results), set(expect).difference(results))

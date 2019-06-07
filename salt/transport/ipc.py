@@ -19,11 +19,12 @@ import tornado.gen
 import tornado.netutil
 import tornado.concurrent
 from tornado.locks import Lock
-from tornado.ioloop import IOLoop, TimeoutError as TornadoTimeoutError
+from tornado.ioloop import TimeoutError as TornadoTimeoutError
 from tornado.iostream import IOStream, StreamClosedError
 # Import Salt libs
 import salt.transport.client
 import salt.transport.frame
+import salt.utils.asynchronous
 from salt.ext import six
 
 log = logging.getLogger(__name__)
@@ -87,6 +88,11 @@ class IPCServer(object):
     A Tornado IPC server very similar to Tornado's TCPServer class
     but using either UNIX domain sockets or TCP sockets
     '''
+
+    _coroutines = [
+        'handle_stream',
+    ]
+
     def __init__(self, socket_path, io_loop=None, payload_handler=None):
         '''
         Create a new Tornado IPC server
@@ -109,7 +115,7 @@ class IPCServer(object):
 
         # Placeholders for attributes to be populated by method calls
         self.sock = None
-        self.io_loop = io_loop or IOLoop.current()
+        self.io_loop = io_loop or salt.utils.asynchronous.IOLoop()
         self._closing = False
 
     def start(self):
@@ -161,6 +167,7 @@ class IPCServer(object):
                         raw_body=True,
                     )
                     yield stream.write(pack)
+                    raise tornado.gen.Return(None)
                 return return_message
             else:
                 return _null
@@ -191,6 +198,7 @@ class IPCServer(object):
             except Exception as exc:
                 log.error('Exception occurred while '
                           'handling stream: %s', exc)
+        raise tornado.gen.Return(None)
 
     def handle_connection(self, connection, address):
         log.trace('IPCServer: Handling connection '
@@ -250,7 +258,7 @@ class IPCClient(object):
         to the server.
 
         '''
-        self.io_loop = io_loop or tornado.ioloop.IOLoop.current()
+        self.io_loop = io_loop or salt.utils.asynchronous.IOLoop()
         self.socket_path = socket_path
         self._closing = False
         self.stream = None
@@ -296,12 +304,12 @@ class IPCClient(object):
         else:
             sock_type = socket.AF_UNIX
             sock_addr = self.socket_path
-
         self.stream = None
         if timeout is not None:
             timeout_at = time.time() + timeout
 
         while True:
+            #yield tornado.gen.moment
             if self._closing:
                 break
 
@@ -311,11 +319,12 @@ class IPCClient(object):
                         socket.socket(sock_type, socket.SOCK_STREAM)
                     )
             try:
-                log.trace('IPCClient: Connecting to socket: %s', self.socket_path)
+                log.trace('IPCClient: Connecting to socket: %s %r', self.socket_path, self.io_loop)
                 yield self.stream.connect(sock_addr)
                 self._connecting_future.set_result(True)
                 break
-            except Exception as e:
+            except tornado.iostream.StreamClosedError as exc:
+                #log.exception("IPCClient exception")
                 if self.stream.closed():
                     self.stream = None
 
@@ -323,10 +332,14 @@ class IPCClient(object):
                     if self.stream is not None:
                         self.stream.close()
                         self.stream = None
-                    self._connecting_future.set_exception(e)
+                    self._connecting_future.set_exception(exc)
                     break
 
                 yield tornado.gen.sleep(1)
+            except Exception as exc:
+                log.exception("Unhandled IPCClient exception")
+                self._connecting_future.set_exception(exc)
+        raise tornado.gen.Return(None)
 
     def __del__(self):
         try:
@@ -354,7 +367,13 @@ class IPCClient(object):
         log.debug('Closing %s instance', self.__class__.__name__)
 
         if self.stream is not None and not self.stream.closed():
-            self.stream.close()
+            # TODO: We get RuntimeErrors on some test cases like,
+            # unit.transport.test_ipc.IPCMessagePubSubCasetest_multi_client_reading
+            # Figure out what is causing this or detect the loop is closed.
+            try:
+                self.stream.close()
+            except RuntimeError as exc:
+                log.error("Error while closing stream %r", exc)
 
 
 class IPCMessageClient(IPCClient):
@@ -375,7 +394,7 @@ class IPCMessageClient(IPCClient):
     import salt.config
     import salt.transport.ipc
 
-    io_loop = tornado.ioloop.IOLoop.current()
+    io_loop = salt.utils.asynchronous.IOLoop()
 
     ipc_server_socket_path = '/var/run/ipc_server.ipc'
 
@@ -387,6 +406,12 @@ class IPCMessageClient(IPCClient):
     # Send some data
     ipc_client.send('Hello world')
     '''
+    _coroutines = [
+        'send',
+        'connect',
+        '_connect',
+    ]
+
     # FIXME timeout unimplemented
     # FIXME tries unimplemented
     @tornado.gen.coroutine
@@ -424,7 +449,7 @@ class IPCMessageServer(IPCServer):
 
         opts = salt.config.master_opts()
 
-        io_loop = tornado.ioloop.IOLoop.current()
+        io_loop = salt.utils.asynchronous.IOLoop()
         ipc_server_socket_path = '/var/run/ipc_server.ipc'
         ipc_server = salt.transport.ipc.IPCMessageServer(opts, io_loop=io_loop
                                                          stream_handler=print_to_console)
@@ -467,7 +492,7 @@ class IPCMessagePublisher(object):
 
         # Placeholders for attributes to be populated by method calls
         self.sock = None
-        self.io_loop = io_loop or IOLoop.current()
+        self.io_loop = io_loop or salt.utils.asynchronous.IOLoop()
         self._closing = False
         self.streams = set()
 
@@ -586,7 +611,7 @@ class IPCMessageSubscriber(IPCClient):
 
     # Create a new IO Loop.
     # We know that this new IO Loop is not currently running.
-    io_loop = tornado.ioloop.IOLoop()
+    io_loop = salt.utils.asynchronous.IOLoop()
 
     ipc_publisher_socket_path = '/var/run/ipc_publisher.ipc'
 
@@ -599,6 +624,15 @@ class IPCMessageSubscriber(IPCClient):
     # Wait for some data
     package = ipc_subscriber.read_sync()
     '''
+    _coroutines = [
+        'send',
+        'connect',
+        '_connect',
+        '_read',
+        'read_async',
+        'read',
+    ]
+
     def __init__(self, socket_path, io_loop=None):
         super(IPCMessageSubscriber, self).__init__(
             socket_path, io_loop=io_loop)
@@ -611,9 +645,8 @@ class IPCMessageSubscriber(IPCClient):
         try:
             yield self._read_in_progress.acquire(timeout=0.00000001)
         except tornado.gen.TimeoutError:
-            raise tornado.gen.Return(None)
+            raise RuntimeError("Unable to acquire read lock")
 
-        log.debug('IPC Subscriber is starting reading')
         exc_to_raise = None
         ret = None
         try:
@@ -624,9 +657,13 @@ class IPCMessageSubscriber(IPCClient):
                 if timeout is None:
                     wire_bytes = yield self._read_stream_future
                 else:
-                    wire_bytes = yield FutureWithTimeout(self.io_loop,
-                                                         self._read_stream_future,
-                                                         timeout)
+                    wire_bytes = yield tornado.gen.with_timeout(
+                        future=self._read_stream_future,
+                        timeout=self.io_loop.time() + timeout,
+                        quiet_exceptions=(
+                            StreamClosedError
+                        ),
+                    )
                 self._read_stream_future = None
 
                 # Remove the timeout once we get some data or an exception
@@ -647,7 +684,7 @@ class IPCMessageSubscriber(IPCClient):
                 if not first_sync_msg:
                     # We read at least one piece of data and we're on sync run
                     break
-        except TornadoTimeoutError:
+        except (tornado.gen.TimeoutError, TornadoTimeoutError):
             # In the timeout case, just return None.
             # Keep 'self._read_stream_future' alive.
             ret = None
@@ -698,6 +735,28 @@ class IPCMessageSubscriber(IPCClient):
                 yield tornado.gen.sleep(1)
         yield self._read(None, callback)
 
+    @tornado.gen.coroutine
+    def read(self, timeout):
+        '''
+        Asynchronously read messages and invoke a callback when they are ready.
+
+        :param callback: A callback with the received data
+        '''
+        if self._saved_data:
+            res = self._saved_data.pop(0)
+            raise tornado.gen.Return(res)
+        while not self.connected():
+            try:
+                yield self.connect(timeout=5)
+            except StreamClosedError:
+                log.trace('Subscriber closed stream on IPC %s before connect', self.socket_path)
+                yield tornado.gen.sleep(1)
+            except Exception as exc:
+                log.error('Exception occurred while Subscriber connecting: %s', exc)
+                yield tornado.gen.sleep(1)
+        res = yield self._read(timeout)
+        raise tornado.gen.Return(res)
+
     def close(self):
         '''
         Routines to handle any cleanup before the instance shuts down.
@@ -714,6 +773,8 @@ class IPCMessageSubscriber(IPCClient):
             exc = self._read_stream_future.exception()
             if exc and not isinstance(exc, StreamClosedError):
                 log.error("Read future returned exception %r", exc)
+        if self.stream:
+            self.stream.close()
 
     def __del__(self):
         if IPCMessageSubscriber in globals():

@@ -8,6 +8,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import logging
 import tornado.ioloop
 from salt.exceptions import SaltSystemExit
+#import salt.utils.asynchronous
 from salt._compat import ipaddress
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,11 @@ if ZMQDefaultLoop is None:
         ZMQDefaultLoop = None
     if ZMQDefaultLoop is None:
         ZMQDefaultLoop = tornado.ioloop.IOLoop
+
+# TODO: This may not be needed if we can switch to
+# `salt.utils.asynchronous.IOLooop` in the rest of the codebase. We still need
+# to validate everything with py2 and older tornado versions.
+#ZMQDefaultLoop = salt.utils.asynchronous.IOLoop
 
 
 def install_zmq():

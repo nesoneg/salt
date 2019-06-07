@@ -18,6 +18,7 @@ import sys
 import errno
 import socket
 import logging
+import threading
 
 # Import salt libs
 import salt.utils.event
@@ -47,8 +48,16 @@ class PyTestEngine(object):
     def __init__(self, opts):
         self.opts = opts
         self.sock = None
+        self.thread = None
 
     def start(self):
+        # Wrap the real enging start in a thread. This is needed to play nice
+        # with asyncio when the Python version is < 3.6.
+        self.thread = threading.Thread(target=self.start_target)
+        self.thread.start()
+        self.thread.join()
+
+    def start_target(self):
         self.io_loop = ioloop.IOLoop()
         self.io_loop.make_current()
         self.io_loop.add_callback(self._start)
