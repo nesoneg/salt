@@ -1465,6 +1465,9 @@ Example:
 Return the ip resolved by dns, but do not exit on failure, only raise an
 exception. Obeys system preference for IPv4/6 address resolution.
 
+This function tries to connect to the address/port before considering it
+valid and therefor requires a port to test. The default port tested is 80.
+
 Example:
 
 .. code-block:: jinja
@@ -1479,6 +1482,15 @@ Returns:
 
 File filters
 ------------
+
+.. jinja_ref:: connection_check
+
+``connection_check``
+--------------------
+
+.. versionadded:: Neon
+
+Return the IP resolved by DNS. This is an alias of ``dns_check``.
 
 .. jinja_ref:: is_text_file
 
