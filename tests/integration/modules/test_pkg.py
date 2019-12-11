@@ -96,7 +96,6 @@ class PkgModuleTest(ModuleCase, SaltReturnAssertsMixin):
                 self.assertIsInstance(ret, dict,
                                       'The \'pkg.get_repo\' command did not return the excepted dictionary. '
                                       'Output:\n{}'.format(ret))
-
                 self.assertEqual(
                     ret['uri'],
                     uri,
@@ -267,6 +266,9 @@ class PkgModuleTest(ModuleCase, SaltReturnAssertsMixin):
         '''
         Test running a system upgrade when there are packages that need upgrading
         '''
+        if grains['os'] == 'Arch':
+            self.skipTest('Arch moved to Python 3.8 and we\'re not ready for it yet')
+
         func = 'pkg.upgrade'
 
         # First make sure that an up-to-date copy of the package db is available
