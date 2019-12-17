@@ -263,7 +263,7 @@ def __virtual__():
 
 
 def __mysql_hash_password(password):
-    _password = hashlib.sha1(password).digest()
+    _password = hashlib.sha1(password.encode()).digest()
     _password = '*{0}'.format(hashlib.sha1(_password).hexdigest().upper())
     return _password
 
@@ -1283,7 +1283,7 @@ def _get_user_auth_plugin(user, host='localhost', **connection_args):
     results = cur.fetchall()
     log.debug(results)
     if results:
-        return results[0].get('PLUGIN')
+        return results[0].get('PLUGIN').decode()
     return None
 
 
